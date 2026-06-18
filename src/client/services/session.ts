@@ -88,7 +88,10 @@ function commitSession(resolved: ResolvedSession): void {
 
 async function refreshIfNeeded(): Promise<void> {
 	const token = getAccessToken();
-	const shouldTryRefresh = !token || isAccessTokenExpired() || sessionState.status !== 'authorized';
+	if (!token) {
+		return;
+	}
+	const shouldTryRefresh = isAccessTokenExpired() || sessionState.status !== 'authorized';
 	if (!shouldTryRefresh) {
 		return;
 	}
@@ -121,6 +124,15 @@ export async function refreshTokens(mode: 'soft' | 'hard' = 'hard'): Promise<voi
 				!resolved.user &&
 				sessionState.status === 'authorized' &&
 				isTransientRefreshError(resolved.errorCode)
+			) {
+				return;
+			}
+			if (
+				mode === 'soft' &&
+				!resolved.user &&
+				sessionState.status === 'authorized' &&
+				typeof document !== 'undefined' &&
+				document.visibilityState !== 'visible'
 			) {
 				return;
 			}
