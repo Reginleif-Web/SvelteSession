@@ -4,6 +4,12 @@ All notable changes to this package will be documented in this file.
 
 This project follows semantic versioning where possible.
 
+## 1.0.5-beta.2
+
+- Fixed client recovery loop to avoid `POST /refresh` calls when there is no in-memory session/token, preventing repeated backend `401` responses in unauthorized state.
+- Fixed tab return recovery flow: session refresh is now triggered on foreground events (`focus`, `pageshow`, `online`, `visibilitychange`) even when access token is missing, so auth can recover without full page reload.
+- Fixed client session resolver side effects by removing premature token clearing from `resolveClientSession()` failure branches; session state is now finalized only by session commit logic.
+
 ## 1.0.5-beta.0
 
 - Switched `AuthUser`, `CheckSessionResponseData`, `SessionUser`, `ClientSession`, and `ServerSession` to interfaces for module augmentation.
