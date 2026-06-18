@@ -57,6 +57,20 @@ function clearRecoveryInterval(): void {
 	}
 }
 
+function hasSessionCookie(): boolean {
+	if (typeof document === 'undefined') {
+		return false;
+	}
+	const { cookie } = getAuthConfig();
+	const pairs = document.cookie.split(';');
+	for (const pair of pairs) {
+		if (pair.trim().startsWith(`${cookie.sessionName}=`)) {
+			return true;
+		}
+	}
+	return false;
+}
+
 function scheduleAccessTokenRefresh(expiresInSec: number): void {
 	const { paths, session } = getAuthConfig();
 	clearRefreshTimer();
@@ -99,7 +113,10 @@ async function refreshIfNeeded(trigger: RefreshTrigger): Promise<void> {
 	}
 	const token = getAccessToken();
 	if (!token) {
-		if (trigger !== 'foreground' || sessionState.status === 'loading') {
+		if (sessionState.status === 'loading') {
+			return;
+		}
+		if (!hasSessionCookie()) {
 			return;
 		}
 		const now = Date.now();

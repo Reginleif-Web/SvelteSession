@@ -4,6 +4,11 @@ All notable changes to this package will be documented in this file.
 
 This project follows semantic versioning where possible.
 
+## 1.0.5-beta.3
+
+- Fixed no-token client recovery after long unfocus/unlock: recovery is no longer restricted to foreground trigger only, so interval recovery can revalidate session without page reload.
+- Added session-cookie guard for no-token recovery attempts to avoid refresh calls when the user has no active session cookie.
+
 ## 1.0.5-beta.2
 
 - Fixed client recovery loop to avoid `POST /refresh` calls when there is no in-memory session/token, preventing repeated backend `401` responses in unauthorized state.
