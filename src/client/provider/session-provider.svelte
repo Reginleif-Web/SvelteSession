@@ -3,7 +3,7 @@
 	import { configureAuth, getAuthConfig, type AuthConfig } from '../../shared/config.js';
 	import { initSession, startSessionAutoRecovery, stopSessionAutoRecovery } from '../services/session.js';
 	import { hydrateSession } from '../state/session-state.svelte.js';
-	import { setAccessToken } from '../state/access-token-store.js';
+	import { clearAccessToken, setAccessToken } from '../state/access-token-store.js';
 	import type { SessionUser } from '../../shared/types.js';
 
 	export type ProviderSession = {
@@ -14,7 +14,7 @@
 
 	let {
 		config,
-		session = null,
+		session,
 		children
 	}: {
 		config: AuthConfig;
@@ -22,8 +22,11 @@
 		children: import('svelte').Snippet;
 	} = $props();
 
-	function initializeProvider(config: AuthConfig, session: ProviderSession | null): void {
+	function initializeProvider(config: AuthConfig, session: ProviderSession | null | undefined): void {
 		configureAuth(config);
+		if (session === undefined) {
+			return;
+		}
 
 		hydrateSession(session?.user ?? null, session?.accessToken ?? null);
 
@@ -33,7 +36,9 @@
 					? session.accessTokenExpiresInSec
 					: getAuthConfig().session.defaultAccessTokenTtlSec;
 			setAccessToken(session.accessToken, expiresInSec);
+			return;
 		}
+		clearAccessToken();
 	}
 
 	const getInitialConfig = () => config;

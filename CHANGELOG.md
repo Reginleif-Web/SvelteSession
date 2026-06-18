@@ -4,6 +4,11 @@ All notable changes to this package will be documented in this file.
 
 This project follows semantic versioning where possible.
 
+## 1.0.5-beta.5
+
+- Fixed `SessionProvider` initialization to treat omitted `session` prop as "no initial SSR session" instead of forcing client state hydration to unauthorized.
+- Synchronized provider hydration side effects by clearing in-memory access token only when `session` is explicitly provided without valid `{ user, accessToken }`.
+
 ## 1.0.5-beta.4
 - Removed the session-cookie gate from no-token client recovery so revalidation requests are not blocked in runtime unauthorized state after long unfocus/unlock.
 - Fixed client hydration to keep SSR user data authorized when access token is missing and to revalidate that state in `initSession()`.
