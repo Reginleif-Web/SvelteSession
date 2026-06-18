@@ -38,7 +38,6 @@ export async function resolveClientSession(): Promise<ResolvedSession> {
 
 	const { paths } = getAuthConfig();
 	if (!paths.refresh) {
-		clearAccessToken();
 		return {
 			user: null,
 			accessToken: null,
@@ -49,7 +48,6 @@ export async function resolveClientSession(): Promise<ResolvedSession> {
 
 	const { result } = await identityRefresh();
 	if (!result.success) {
-		clearAccessToken();
 		return {
 			user: null,
 			accessToken: null,
@@ -58,7 +56,6 @@ export async function resolveClientSession(): Promise<ResolvedSession> {
 		};
 	}
 	if (!result.data) {
-		clearAccessToken();
 		return {
 			user: null,
 			accessToken: null,

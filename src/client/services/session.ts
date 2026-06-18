@@ -17,14 +17,20 @@ let recoveryInterval: ReturnType<typeof setInterval> | null;
 let recoveryListenersAttached = false;
 let refreshInFlight: Promise<void> | null;
 let refreshInFlightMode: 'soft' | 'hard' | null;
-const recoveryTrigger = () => {
-	void refreshIfNeeded();
+let lastNoTokenForegroundRefreshAt = 0;
+const noTokenForegroundRefreshCooldownMs = 10_000;
+type RefreshTrigger = 'interval' | 'foreground';
+const recoveryIntervalTrigger = () => {
+	void refreshIfNeeded('interval');
+};
+const recoveryForegroundTrigger = () => {
+	void refreshIfNeeded('foreground');
 };
 const recoveryVisibilityTrigger = () => {
 	if (document.visibilityState !== 'visible') {
 		return;
 	}
-	void refreshIfNeeded();
+	void refreshIfNeeded('foreground');
 };
 
 function isTransientRefreshError(code: string | undefined): boolean {
@@ -86,17 +92,26 @@ function commitSession(resolved: ResolvedSession): void {
 	applySession(null, null);
 }
 
-async function refreshIfNeeded(): Promise<void> {
+async function refreshIfNeeded(trigger: RefreshTrigger): Promise<void> {
+	const { paths } = getAuthConfig();
+	if (!paths.refresh) {
+		return;
+	}
 	const token = getAccessToken();
 	if (!token) {
+		if (trigger !== 'foreground' || sessionState.status === 'loading') {
+			return;
+		}
+		const now = Date.now();
+		if (now - lastNoTokenForegroundRefreshAt < noTokenForegroundRefreshCooldownMs) {
+			return;
+		}
+		lastNoTokenForegroundRefreshAt = now;
+		await refreshTokens('soft');
 		return;
 	}
 	const shouldTryRefresh = isAccessTokenExpired() || sessionState.status !== 'authorized';
 	if (!shouldTryRefresh) {
-		return;
-	}
-	const { paths } = getAuthConfig();
-	if (!paths.refresh) {
 		return;
 	}
 	await refreshTokens('soft');
@@ -213,16 +228,16 @@ export function startSessionAutoRecovery(): void {
 		return;
 	}
 	clearRecoveryInterval();
-	recoveryInterval = setInterval(recoveryTrigger, 15_000);
+	recoveryInterval = setInterval(recoveryIntervalTrigger, 15_000);
 	if (recoveryListenersAttached) {
 		return;
 	}
-	window.addEventListener('focus', recoveryTrigger);
-	window.addEventListener('pageshow', recoveryTrigger);
-	window.addEventListener('online', recoveryTrigger);
+	window.addEventListener('focus', recoveryForegroundTrigger);
+	window.addEventListener('pageshow', recoveryForegroundTrigger);
+	window.addEventListener('online', recoveryForegroundTrigger);
 	document.addEventListener('visibilitychange', recoveryVisibilityTrigger);
 	recoveryListenersAttached = true;
-	void refreshIfNeeded();
+	void refreshIfNeeded('interval');
 }
 
 export function stopSessionAutoRecovery(): void {
@@ -233,9 +248,9 @@ export function stopSessionAutoRecovery(): void {
 	if (!recoveryListenersAttached) {
 		return;
 	}
-	window.removeEventListener('focus', recoveryTrigger);
-	window.removeEventListener('pageshow', recoveryTrigger);
-	window.removeEventListener('online', recoveryTrigger);
+	window.removeEventListener('focus', recoveryForegroundTrigger);
+	window.removeEventListener('pageshow', recoveryForegroundTrigger);
+	window.removeEventListener('online', recoveryForegroundTrigger);
 	document.removeEventListener('visibilitychange', recoveryVisibilityTrigger);
 	recoveryListenersAttached = false;
 }
