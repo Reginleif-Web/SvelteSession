@@ -4,6 +4,12 @@ All notable changes to this package will be documented in this file.
 
 This project follows semantic versioning where possible.
 
+## 1.0.5-beta.4
+- Removed the session-cookie gate from no-token client recovery so revalidation requests are not blocked in runtime unauthorized state after long unfocus/unlock.
+- Fixed client hydration to keep SSR user data authorized when access token is missing and to revalidate that state in `initSession()`.
+- Aligned client session resolution with SSR by querying the session endpoint before refresh fallback in `resolveClientSession()`.
+- Fixed SSR-authorized/client-unauthorized mismatch after idle/unlock by using the same server-backed session source for client revalidation.
+
 ## 1.0.5-beta.3
 
 - Fixed no-token client recovery after long unfocus/unlock: recovery is no longer restricted to foreground trigger only, so interval recovery can revalidate session without page reload.

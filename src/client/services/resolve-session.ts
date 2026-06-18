@@ -4,6 +4,7 @@ import {
 	identityAuth,
 	identityCheck,
 	identityLogout,
+	identitySession,
 	identityRefresh
 } from '../../shared/api/identity.js';
 import { getAuthConfig } from '../../shared/config.js';
@@ -36,13 +37,23 @@ export async function resolveClientSession(): Promise<ResolvedSession> {
 		}
 	}
 
+	const { result: sessionResult } = await identitySession();
+	if (sessionResult.success) {
+		setAccessToken(sessionResult.data.accessToken, sessionResult.data.expires);
+		return {
+			user: sessionResult.data.user,
+			accessToken: sessionResult.data.accessToken,
+			expiresInSec: sessionResult.data.expires
+		};
+	}
+
 	const { paths } = getAuthConfig();
 	if (!paths.refresh) {
 		return {
 			user: null,
 			accessToken: null,
 			expiresInSec: 0,
-			errorCode: 'refresh_not_configured'
+			errorCode: sessionResult.error.code
 		};
 	}
 
