@@ -4,6 +4,58 @@ All notable changes to this package will be documented in this file.
 
 This project follows semantic versioning where possible.
 
+## 1.0.5
+
+- Switched `AuthUser`, `CheckSessionResponseData`, `SessionUser`, `ClientSession`, and `ServerSession` to interfaces for module augmentation.
+- Removed fixed `{ userId, email }` remapping in check-session resolution to preserve extended user payload fields.
+- Fixed client session recovery after tab idle/unfocus: revalidation on foreground events (`focus`, `pageshow`, `online`, `visibilitychange`) and interval, without spurious `POST /refresh` when unauthorized or tokenless.
+- Added `identitySession()` lookup before refresh fallback in `resolveClientSession()`; SSR-hydrated user stays authorized when access token is missing.
+- Classified session resolution as authorized, anonymous, invalid, or transient; transient failures no longer clear an existing authorized session.
+- Fixed `SessionProvider`: omitted `session` prop no longer forces unauthorized hydration; in-memory access token is cleared only when `session` is explicitly provided without valid `{ user, accessToken }`.
+- Removed `paths.refresh` hard-gates from `scheduleAccessTokenRefresh()`, `refreshIfNeeded()`, and `initSession()`; soft refresh no longer deauthorizes on unresolved session.
+- Stopped refresh fallback after `identitySession()` returns `401/403`; suppressed repeated no-token recovery once the server confirmed no session exists.
+- Added `session.requestTimeoutMs` with abort handling for client identity requests.
+
+## 1.0.5-beta.7
+
+- Added `session.requestTimeoutMs` and abort handling for client identity requests to prevent stuck session refresh promises.
+- Classified client session resolution as authorized, anonymous, invalid, or transient so temporary request failures no longer clear an existing authorized session.
+- Stopped refresh fallback after `identitySession()` returns `401/403`, preventing refresh endpoint calls when no server session exists.
+- Suppressed repeated no-token recovery requests after the server has confirmed that no session exists.
+
+## 1.0.5-beta.6
+
+- Removed `paths.refresh` hard-gates from client session revalidation in `scheduleAccessTokenRefresh()`, `refreshIfNeeded()`, and `initSession()`.
+- Stopped forced local `unauthorized` transitions caused by missing refresh endpoint during idle/unfocus token lifetime flow.
+- Updated soft refresh behavior to never deauthorize the client on unresolved session; unauthorized transitions are now limited to hard session resolution paths.
+
+## 1.0.5-beta.5
+
+- Fixed `SessionProvider` initialization to treat omitted `session` prop as "no initial SSR session" instead of forcing client state hydration to unauthorized.
+- Synchronized provider hydration side effects by clearing in-memory access token only when `session` is explicitly provided without valid `{ user, accessToken }`.
+
+## 1.0.5-beta.4
+- Removed the session-cookie gate from no-token client recovery so revalidation requests are not blocked in runtime unauthorized state after long unfocus/unlock.
+- Fixed client hydration to keep SSR user data authorized when access token is missing and to revalidate that state in `initSession()`.
+- Aligned client session resolution with SSR by querying the session endpoint before refresh fallback in `resolveClientSession()`.
+- Fixed SSR-authorized/client-unauthorized mismatch after idle/unlock by using the same server-backed session source for client revalidation.
+
+## 1.0.5-beta.3
+
+- Fixed no-token client recovery after long unfocus/unlock: recovery is no longer restricted to foreground trigger only, so interval recovery can revalidate session without page reload.
+- Added session-cookie guard for no-token recovery attempts to avoid refresh calls when the user has no active session cookie.
+
+## 1.0.5-beta.2
+
+- Fixed client recovery loop to avoid `POST /refresh` calls when there is no in-memory session/token, preventing repeated backend `401` responses in unauthorized state.
+- Fixed tab return recovery flow: session refresh is now triggered on foreground events (`focus`, `pageshow`, `online`, `visibilitychange`) even when access token is missing, so auth can recover without full page reload.
+- Fixed client session resolver side effects by removing premature token clearing from `resolveClientSession()` failure branches; session state is now finalized only by session commit logic.
+
+## 1.0.5-beta.0
+
+- Switched `AuthUser`, `CheckSessionResponseData`, `SessionUser`, `ClientSession`, and `ServerSession` to interfaces for module augmentation.
+- Removed fixed `{ userId, email }` remapping in check-session resolution to preserve extended user payload fields.
+
 ## 1.0.4
 
 - Updated client refresh flow with `soft` and `hard` modes to avoid premature `unauthorized` during transient idle/network failures.

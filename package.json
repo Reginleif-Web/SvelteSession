@@ -1,6 +1,6 @@
 {
 	"name": "svelte-session",
-	"version": "1.0.4",
+	"version": "1.0.5",
 	"private": false,
 	"description": "SvelteKit session client for cookie-backed refresh sessions and in-memory access tokens",
 	"keywords": [

@@ -4,6 +4,7 @@ import {
 	identityAuth,
 	identityCheck,
 	identityLogout,
+	identitySession,
 	identityRefresh
 } from '../../shared/api/identity.js';
 import { getAuthConfig } from '../../shared/config.js';
@@ -15,11 +16,37 @@ import {
 } from '../state/access-token-store.js';
 
 export type ResolvedSession = {
+	kind: 'authorized' | 'anonymous' | 'invalid' | 'transient';
 	user: SessionUser | null;
 	accessToken: string | null;
 	expiresInSec: number;
 	errorCode?: string;
 };
+
+function isTransientResolutionError(code: string | undefined): boolean {
+	if (!code) {
+		return false;
+	}
+	if (
+		code === 'network_error' ||
+		code === 'timeout' ||
+		code === 'invalid_response' ||
+		code === 'http_429'
+	) {
+		return true;
+	}
+	if (/^http_\d\d\d$/.test(code) && code !== 'http_401' && code !== 'http_403') {
+		return true;
+	}
+	return false;
+}
+
+function resolveFailedRefreshKind(code: string | undefined): ResolvedSession['kind'] {
+	if (code === 'http_401' || code === 'http_403') {
+		return 'invalid';
+	}
+	return isTransientResolutionError(code) ? 'transient' : 'invalid';
+}
 
 export async function resolveClientSession(): Promise<ResolvedSession> {
 	if (!isAccessTokenExpired()) {
@@ -28,7 +55,8 @@ export async function resolveClientSession(): Promise<ResolvedSession> {
 			const check = await identityCheck(token);
 			if (check.success && check.data) {
 				return {
-					user: { userId: check.data.userId, email: check.data.email },
+					kind: 'authorized',
+					user: check.data,
 					accessToken: token,
 					expiresInSec: 0
 				};
@@ -36,21 +64,41 @@ export async function resolveClientSession(): Promise<ResolvedSession> {
 		}
 	}
 
-	const { paths } = getAuthConfig();
-	if (!paths.refresh) {
-		clearAccessToken();
+	const { result: sessionResult } = await identitySession();
+	if (sessionResult.success) {
+		setAccessToken(sessionResult.data.accessToken, sessionResult.data.expires);
 		return {
+			kind: 'authorized',
+			user: sessionResult.data.user,
+			accessToken: sessionResult.data.accessToken,
+			expiresInSec: sessionResult.data.expires
+		};
+	}
+	if (sessionResult.error.code === 'http_401' || sessionResult.error.code === 'http_403') {
+		return {
+			kind: 'anonymous',
 			user: null,
 			accessToken: null,
 			expiresInSec: 0,
-			errorCode: 'refresh_not_configured'
+			errorCode: sessionResult.error.code
+		};
+	}
+
+	const { paths } = getAuthConfig();
+	if (!paths.refresh) {
+		return {
+			kind: isTransientResolutionError(sessionResult.error.code) ? 'transient' : 'invalid',
+			user: null,
+			accessToken: null,
+			expiresInSec: 0,
+			errorCode: sessionResult.error.code
 		};
 	}
 
 	const { result } = await identityRefresh();
 	if (!result.success) {
-		clearAccessToken();
 		return {
+			kind: resolveFailedRefreshKind(result.error.code),
 			user: null,
 			accessToken: null,
 			expiresInSec: 0,
@@ -58,8 +106,8 @@ export async function resolveClientSession(): Promise<ResolvedSession> {
 		};
 	}
 	if (!result.data) {
-		clearAccessToken();
 		return {
+			kind: 'transient',
 			user: null,
 			accessToken: null,
 			expiresInSec: 0,
@@ -70,6 +118,7 @@ export async function resolveClientSession(): Promise<ResolvedSession> {
 	setAccessToken(result.data.accessToken, result.data.expires);
 
 	return {
+		kind: 'authorized',
 		user: result.data.user,
 		accessToken: result.data.accessToken,
 		expiresInSec: result.data.expires

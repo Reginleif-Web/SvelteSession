@@ -216,6 +216,8 @@ import type {
 } from 'svelte-session';
 ```
 
+`AuthUser`, `CheckSessionResponseData`, `SessionUser`, `ClientSession`, and `ServerSession` are exported as interfaces so they can be extended through TypeScript module augmentation.
+
 ### Server exports
 
 ```ts

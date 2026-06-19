@@ -18,10 +18,10 @@ export type AuthData = {
 	password: string;
 };
 
-export type AuthUser = {
+export interface AuthUser {
 	userId: string;
 	email: string;
-};
+}
 
 export type TokenSessionResponseData = {
 	accessToken: string;
@@ -35,7 +35,7 @@ export type RefreshResponseData = TokenSessionResponseData;
 
 export type SessionResponseData = TokenSessionResponseData;
 
-export type CheckSessionResponseData = AuthUser;
+export interface CheckSessionResponseData extends AuthUser {}
 
 export type AuthResult = ApiResponse<AuthResponseData>;
 

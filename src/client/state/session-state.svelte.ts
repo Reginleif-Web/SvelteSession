@@ -17,8 +17,8 @@ export function setSessionLoading(): void {
 }
 
 export function hydrateSession(user: SessionUser | null, accessToken: string | null): void {
-	if (user && accessToken) {
-		applySession(user, accessToken);
+	if (user) {
+		applySession(user, accessToken ?? null);
 		return;
 	}
 	applySession(null, null);

@@ -14,6 +14,7 @@ export type AuthCookieConfig = {
 export type AuthSessionConfig = {
 	refreshBeforeExpiryMs: number;
 	defaultAccessTokenTtlSec: number;
+	requestTimeoutMs: number;
 };
 
 export type AuthConfig = {
@@ -41,7 +42,8 @@ const defaultCookie: AuthCookieConfig = {
 
 const defaultSession: AuthSessionConfig = {
 	refreshBeforeExpiryMs: 60_000,
-	defaultAccessTokenTtlSec: 15 * 60
+	defaultAccessTokenTtlSec: 15 * 60,
+	requestTimeoutMs: 15_000
 };
 
 let resolvedConfig: ResolvedAuthConfig | null;

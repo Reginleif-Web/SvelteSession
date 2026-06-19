@@ -17,24 +17,39 @@ let recoveryInterval: ReturnType<typeof setInterval> | null;
 let recoveryListenersAttached = false;
 let refreshInFlight: Promise<void> | null;
 let refreshInFlightMode: 'soft' | 'hard' | null;
-const recoveryTrigger = () => {
-	void refreshIfNeeded();
+let lastNoTokenForegroundRefreshAt = 0;
+let hasConfirmedNoServerSession = false;
+const noTokenForegroundRefreshCooldownMs = 10_000;
+type RefreshTrigger = 'interval' | 'foreground';
+const recoveryIntervalTrigger = () => {
+	void refreshIfNeeded('interval');
+};
+const recoveryForegroundTrigger = () => {
+	void refreshIfNeeded('foreground');
 };
 const recoveryVisibilityTrigger = () => {
 	if (document.visibilityState !== 'visible') {
 		return;
 	}
-	void refreshIfNeeded();
+	void refreshIfNeeded('foreground');
 };
 
 function isTransientRefreshError(code: string | undefined): boolean {
 	if (!code) {
 		return false;
 	}
-	if (code === 'network_error' || code === 'invalid_response' || code === 'http_429') {
+	if (
+		code === 'network_error' ||
+		code === 'timeout' ||
+		code === 'invalid_response' ||
+		code === 'http_429'
+	) {
 		return true;
 	}
-	return /^http_5\d\d$/.test(code);
+	if (/^http_\d\d\d$/.test(code) && code !== 'http_401' && code !== 'http_403') {
+		return true;
+	}
+	return false;
 }
 
 function clearRefreshTimer(): void {
@@ -52,15 +67,9 @@ function clearRecoveryInterval(): void {
 }
 
 function scheduleAccessTokenRefresh(expiresInSec: number): void {
-	const { paths, session } = getAuthConfig();
+	const { session } = getAuthConfig();
 	clearRefreshTimer();
 	if (expiresInSec <= 0) {
-		return;
-	}
-	if (!paths.refresh) {
-		refreshTimer = setTimeout(() => {
-			commitSession({ user: null, accessToken: null, expiresInSec: 0 });
-		}, expiresInSec * 1000);
 		return;
 	}
 	const delayMs = Math.max(expiresInSec * 1000 - session.refreshBeforeExpiryMs, 5_000);
@@ -72,6 +81,7 @@ function scheduleAccessTokenRefresh(expiresInSec: number): void {
 function commitSession(resolved: ResolvedSession): void {
 	const { session } = getAuthConfig();
 	if (resolved.user && resolved.accessToken) {
+		hasConfirmedNoServerSession = false;
 		const expiresInSec =
 			resolved.expiresInSec > 0
 				? resolved.expiresInSec
@@ -81,19 +91,37 @@ function commitSession(resolved: ResolvedSession): void {
 		scheduleAccessTokenRefresh(expiresInSec);
 		return;
 	}
+	if (resolved.kind === 'transient') {
+		if (sessionState.data) {
+			applySession(sessionState.data, getAccessToken());
+		}
+		return;
+	}
+	hasConfirmedNoServerSession = true;
 	clearAccessToken();
 	clearRefreshTimer();
 	applySession(null, null);
 }
 
-async function refreshIfNeeded(): Promise<void> {
+async function refreshIfNeeded(trigger: RefreshTrigger): Promise<void> {
 	const token = getAccessToken();
-	const shouldTryRefresh = !token || isAccessTokenExpired() || sessionState.status !== 'authorized';
-	if (!shouldTryRefresh) {
+	if (!token) {
+		if (hasConfirmedNoServerSession && sessionState.status === 'unauthorized') {
+			return;
+		}
+		if (sessionState.status === 'loading' && refreshInFlight) {
+			return;
+		}
+		const now = Date.now();
+		if (now - lastNoTokenForegroundRefreshAt < noTokenForegroundRefreshCooldownMs) {
+			return;
+		}
+		lastNoTokenForegroundRefreshAt = now;
+		await refreshTokens('soft');
 		return;
 	}
-	const { paths } = getAuthConfig();
-	if (!paths.refresh) {
+	const shouldTryRefresh = isAccessTokenExpired() || sessionState.status !== 'authorized';
+	if (!shouldTryRefresh) {
 		return;
 	}
 	await refreshTokens('soft');
@@ -120,7 +148,16 @@ export async function refreshTokens(mode: 'soft' | 'hard' = 'hard'): Promise<voi
 				mode === 'soft' &&
 				!resolved.user &&
 				sessionState.status === 'authorized' &&
-				isTransientRefreshError(resolved.errorCode)
+				(resolved.kind === 'transient' || isTransientRefreshError(resolved.errorCode))
+			) {
+				return;
+			}
+			if (
+				mode === 'soft' &&
+				!resolved.user &&
+				sessionState.status === 'authorized' &&
+				typeof document !== 'undefined' &&
+				document.visibilityState !== 'visible'
 			) {
 				return;
 			}
@@ -129,7 +166,7 @@ export async function refreshTokens(mode: 'soft' | 'hard' = 'hard'): Promise<voi
 			if (mode === 'soft' && sessionState.status === 'authorized') {
 				return;
 			}
-			commitSession({ user: null, accessToken: null, expiresInSec: 0 });
+			commitSession({ kind: 'transient', user: null, accessToken: null, expiresInSec: 0 });
 		}
 	})();
 	try {
@@ -151,10 +188,11 @@ export async function signIn(
 	setSessionLoading();
 	const result = await loginClientSession(credentials);
 	if (!result.ok) {
-		commitSession({ user: null, accessToken: null, expiresInSec: 0 });
+		commitSession({ kind: 'invalid', user: null, accessToken: null, expiresInSec: 0 });
 		return { ok: false, error: result.error };
 	}
 	commitSession({
+		kind: 'authorized',
 		user: result.user,
 		accessToken: result.accessToken,
 		expiresInSec: result.expiresInSec
@@ -168,28 +206,20 @@ export async function signOut(): Promise<void> {
 	clearRefreshTimer();
 	clearRecoveryInterval();
 	await logoutClientSession();
-	commitSession({ user: null, accessToken: null, expiresInSec: 0 });
+	commitSession({ kind: 'anonymous', user: null, accessToken: null, expiresInSec: 0 });
 	await onAfterSignOut?.();
 }
 
 export async function initSession(): Promise<void> {
-	const { paths } = getAuthConfig();
-	if (sessionState.status === 'authorized' && sessionState.data && sessionState.accessToken) {
+	if (sessionState.status === 'authorized' && sessionState.data) {
+		hasConfirmedNoServerSession = false;
 		const expiresInSec = getAccessTokenExpiresInSec();
 		if (expiresInSec > 0) {
 			scheduleAccessTokenRefresh(expiresInSec);
 			return;
 		}
-		if (!paths.refresh) {
-			commitSession({ user: null, accessToken: null, expiresInSec: 0 });
-			return;
-		}
 		setSessionLoading();
 		await refreshTokens('hard');
-		return;
-	}
-	if (!paths.refresh) {
-		commitSession({ user: null, accessToken: null, expiresInSec: 0 });
 		return;
 	}
 	setSessionLoading();
@@ -201,16 +231,16 @@ export function startSessionAutoRecovery(): void {
 		return;
 	}
 	clearRecoveryInterval();
-	recoveryInterval = setInterval(recoveryTrigger, 15_000);
+	recoveryInterval = setInterval(recoveryIntervalTrigger, 15_000);
 	if (recoveryListenersAttached) {
 		return;
 	}
-	window.addEventListener('focus', recoveryTrigger);
-	window.addEventListener('pageshow', recoveryTrigger);
-	window.addEventListener('online', recoveryTrigger);
+	window.addEventListener('focus', recoveryForegroundTrigger);
+	window.addEventListener('pageshow', recoveryForegroundTrigger);
+	window.addEventListener('online', recoveryForegroundTrigger);
 	document.addEventListener('visibilitychange', recoveryVisibilityTrigger);
 	recoveryListenersAttached = true;
-	void refreshIfNeeded();
+	void refreshIfNeeded('interval');
 }
 
 export function stopSessionAutoRecovery(): void {
@@ -221,9 +251,9 @@ export function stopSessionAutoRecovery(): void {
 	if (!recoveryListenersAttached) {
 		return;
 	}
-	window.removeEventListener('focus', recoveryTrigger);
-	window.removeEventListener('pageshow', recoveryTrigger);
-	window.removeEventListener('online', recoveryTrigger);
+	window.removeEventListener('focus', recoveryForegroundTrigger);
+	window.removeEventListener('pageshow', recoveryForegroundTrigger);
+	window.removeEventListener('online', recoveryForegroundTrigger);
 	document.removeEventListener('visibilitychange', recoveryVisibilityTrigger);
 	recoveryListenersAttached = false;
 }
