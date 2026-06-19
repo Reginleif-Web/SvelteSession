@@ -4,7 +4,7 @@ All notable changes to this package will be documented in this file.
 
 This project follows semantic versioning where possible.
 
-## Unreleased
+## 1.0.5-beta.6
 
 - Removed `paths.refresh` hard-gates from client session revalidation in `scheduleAccessTokenRefresh()`, `refreshIfNeeded()`, and `initSession()`.
 - Stopped forced local `unauthorized` transitions caused by missing refresh endpoint during idle/unfocus token lifetime flow.
