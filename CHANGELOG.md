@@ -4,6 +4,12 @@ All notable changes to this package will be documented in this file.
 
 This project follows semantic versioning where possible.
 
+## Unreleased
+
+- Removed `paths.refresh` hard-gates from client session revalidation in `scheduleAccessTokenRefresh()`, `refreshIfNeeded()`, and `initSession()`.
+- Stopped forced local `unauthorized` transitions caused by missing refresh endpoint during idle/unfocus token lifetime flow.
+- Updated soft refresh behavior to never deauthorize the client on unresolved session; unauthorized transitions are now limited to hard session resolution paths.
+
 ## 1.0.5-beta.5
 
 - Fixed `SessionProvider` initialization to treat omitted `session` prop as "no initial SSR session" instead of forcing client state hydration to unauthorized.

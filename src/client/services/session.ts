@@ -58,15 +58,9 @@ function clearRecoveryInterval(): void {
 }
 
 function scheduleAccessTokenRefresh(expiresInSec: number): void {
-	const { paths, session } = getAuthConfig();
+	const { session } = getAuthConfig();
 	clearRefreshTimer();
 	if (expiresInSec <= 0) {
-		return;
-	}
-	if (!paths.refresh) {
-		refreshTimer = setTimeout(() => {
-			commitSession({ user: null, accessToken: null, expiresInSec: 0 });
-		}, expiresInSec * 1000);
 		return;
 	}
 	const delayMs = Math.max(expiresInSec * 1000 - session.refreshBeforeExpiryMs, 5_000);
@@ -93,10 +87,6 @@ function commitSession(resolved: ResolvedSession): void {
 }
 
 async function refreshIfNeeded(trigger: RefreshTrigger): Promise<void> {
-	const { paths } = getAuthConfig();
-	if (!paths.refresh) {
-		return;
-	}
 	const token = getAccessToken();
 	if (!token) {
 		if (sessionState.status === 'loading') {
@@ -200,23 +190,14 @@ export async function signOut(): Promise<void> {
 }
 
 export async function initSession(): Promise<void> {
-	const { paths } = getAuthConfig();
 	if (sessionState.status === 'authorized' && sessionState.data) {
 		const expiresInSec = getAccessTokenExpiresInSec();
 		if (expiresInSec > 0) {
 			scheduleAccessTokenRefresh(expiresInSec);
 			return;
 		}
-		if (!paths.refresh) {
-			commitSession({ user: null, accessToken: null, expiresInSec: 0 });
-			return;
-		}
 		setSessionLoading();
 		await refreshTokens('hard');
-		return;
-	}
-	if (!paths.refresh) {
-		commitSession({ user: null, accessToken: null, expiresInSec: 0 });
 		return;
 	}
 	setSessionLoading();
