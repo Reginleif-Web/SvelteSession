@@ -4,6 +4,18 @@ All notable changes to this package will be documented in this file.
 
 This project follows semantic versioning where possible.
 
+## 1.0.5
+
+- Switched `AuthUser`, `CheckSessionResponseData`, `SessionUser`, `ClientSession`, and `ServerSession` to interfaces for module augmentation.
+- Removed fixed `{ userId, email }` remapping in check-session resolution to preserve extended user payload fields.
+- Fixed client session recovery after tab idle/unfocus: revalidation on foreground events (`focus`, `pageshow`, `online`, `visibilitychange`) and interval, without spurious `POST /refresh` when unauthorized or tokenless.
+- Added `identitySession()` lookup before refresh fallback in `resolveClientSession()`; SSR-hydrated user stays authorized when access token is missing.
+- Classified session resolution as authorized, anonymous, invalid, or transient; transient failures no longer clear an existing authorized session.
+- Fixed `SessionProvider`: omitted `session` prop no longer forces unauthorized hydration; in-memory access token is cleared only when `session` is explicitly provided without valid `{ user, accessToken }`.
+- Removed `paths.refresh` hard-gates from `scheduleAccessTokenRefresh()`, `refreshIfNeeded()`, and `initSession()`; soft refresh no longer deauthorizes on unresolved session.
+- Stopped refresh fallback after `identitySession()` returns `401/403`; suppressed repeated no-token recovery once the server confirmed no session exists.
+- Added `session.requestTimeoutMs` with abort handling for client identity requests.
+
 ## 1.0.5-beta.7
 
 - Added `session.requestTimeoutMs` and abort handling for client identity requests to prevent stuck session refresh promises.
