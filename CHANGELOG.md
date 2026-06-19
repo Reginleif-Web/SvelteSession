@@ -4,6 +4,13 @@ All notable changes to this package will be documented in this file.
 
 This project follows semantic versioning where possible.
 
+## 1.0.5-beta.7
+
+- Added `session.requestTimeoutMs` and abort handling for client identity requests to prevent stuck session refresh promises.
+- Classified client session resolution as authorized, anonymous, invalid, or transient so temporary request failures no longer clear an existing authorized session.
+- Stopped refresh fallback after `identitySession()` returns `401/403`, preventing refresh endpoint calls when no server session exists.
+- Suppressed repeated no-token recovery requests after the server has confirmed that no session exists.
+
 ## 1.0.5-beta.6
 
 - Removed `paths.refresh` hard-gates from client session revalidation in `scheduleAccessTokenRefresh()`, `refreshIfNeeded()`, and `initSession()`.

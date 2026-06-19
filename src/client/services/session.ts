@@ -18,6 +18,7 @@ let recoveryListenersAttached = false;
 let refreshInFlight: Promise<void> | null;
 let refreshInFlightMode: 'soft' | 'hard' | null;
 let lastNoTokenForegroundRefreshAt = 0;
+let hasConfirmedNoServerSession = false;
 const noTokenForegroundRefreshCooldownMs = 10_000;
 type RefreshTrigger = 'interval' | 'foreground';
 const recoveryIntervalTrigger = () => {
@@ -37,10 +38,18 @@ function isTransientRefreshError(code: string | undefined): boolean {
 	if (!code) {
 		return false;
 	}
-	if (code === 'network_error' || code === 'invalid_response' || code === 'http_429') {
+	if (
+		code === 'network_error' ||
+		code === 'timeout' ||
+		code === 'invalid_response' ||
+		code === 'http_429'
+	) {
 		return true;
 	}
-	return /^http_5\d\d$/.test(code);
+	if (/^http_\d\d\d$/.test(code) && code !== 'http_401' && code !== 'http_403') {
+		return true;
+	}
+	return false;
 }
 
 function clearRefreshTimer(): void {
@@ -72,6 +81,7 @@ function scheduleAccessTokenRefresh(expiresInSec: number): void {
 function commitSession(resolved: ResolvedSession): void {
 	const { session } = getAuthConfig();
 	if (resolved.user && resolved.accessToken) {
+		hasConfirmedNoServerSession = false;
 		const expiresInSec =
 			resolved.expiresInSec > 0
 				? resolved.expiresInSec
@@ -81,6 +91,13 @@ function commitSession(resolved: ResolvedSession): void {
 		scheduleAccessTokenRefresh(expiresInSec);
 		return;
 	}
+	if (resolved.kind === 'transient') {
+		if (sessionState.data) {
+			applySession(sessionState.data, getAccessToken());
+		}
+		return;
+	}
+	hasConfirmedNoServerSession = true;
 	clearAccessToken();
 	clearRefreshTimer();
 	applySession(null, null);
@@ -89,7 +106,10 @@ function commitSession(resolved: ResolvedSession): void {
 async function refreshIfNeeded(trigger: RefreshTrigger): Promise<void> {
 	const token = getAccessToken();
 	if (!token) {
-		if (sessionState.status === 'loading') {
+		if (hasConfirmedNoServerSession && sessionState.status === 'unauthorized') {
+			return;
+		}
+		if (sessionState.status === 'loading' && refreshInFlight) {
 			return;
 		}
 		const now = Date.now();
@@ -128,7 +148,7 @@ export async function refreshTokens(mode: 'soft' | 'hard' = 'hard'): Promise<voi
 				mode === 'soft' &&
 				!resolved.user &&
 				sessionState.status === 'authorized' &&
-				isTransientRefreshError(resolved.errorCode)
+				(resolved.kind === 'transient' || isTransientRefreshError(resolved.errorCode))
 			) {
 				return;
 			}
@@ -146,7 +166,7 @@ export async function refreshTokens(mode: 'soft' | 'hard' = 'hard'): Promise<voi
 			if (mode === 'soft' && sessionState.status === 'authorized') {
 				return;
 			}
-			commitSession({ user: null, accessToken: null, expiresInSec: 0 });
+			commitSession({ kind: 'transient', user: null, accessToken: null, expiresInSec: 0 });
 		}
 	})();
 	try {
@@ -168,10 +188,11 @@ export async function signIn(
 	setSessionLoading();
 	const result = await loginClientSession(credentials);
 	if (!result.ok) {
-		commitSession({ user: null, accessToken: null, expiresInSec: 0 });
+		commitSession({ kind: 'invalid', user: null, accessToken: null, expiresInSec: 0 });
 		return { ok: false, error: result.error };
 	}
 	commitSession({
+		kind: 'authorized',
 		user: result.user,
 		accessToken: result.accessToken,
 		expiresInSec: result.expiresInSec
@@ -185,12 +206,13 @@ export async function signOut(): Promise<void> {
 	clearRefreshTimer();
 	clearRecoveryInterval();
 	await logoutClientSession();
-	commitSession({ user: null, accessToken: null, expiresInSec: 0 });
+	commitSession({ kind: 'anonymous', user: null, accessToken: null, expiresInSec: 0 });
 	await onAfterSignOut?.();
 }
 
 export async function initSession(): Promise<void> {
 	if (sessionState.status === 'authorized' && sessionState.data) {
+		hasConfirmedNoServerSession = false;
 		const expiresInSec = getAccessTokenExpiresInSec();
 		if (expiresInSec > 0) {
 			scheduleAccessTokenRefresh(expiresInSec);

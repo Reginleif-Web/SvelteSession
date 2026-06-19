@@ -28,8 +28,13 @@ async function requestJson<T>(input: RequestInfo | URL, init?: RequestInit): Pro
 	result: T;
 	setCookies: string[];
 }> {
+	const { session } = getAuthConfig();
+	const controller = new AbortController();
+	const timeout = setTimeout(() => {
+		controller.abort();
+	}, session.requestTimeoutMs);
 	try {
-		const response = await fetch(input, init);
+		const response = await fetch(input, { ...init, signal: controller.signal });
 		const setCookies =
 			typeof response.headers.getSetCookie === 'function' ? response.headers.getSetCookie() : [];
 
@@ -44,11 +49,16 @@ async function requestJson<T>(input: RequestInfo | URL, init?: RequestInit): Pro
 				setCookies
 			};
 		}
-	} catch {
+	} catch (error) {
 		return {
-			result: requestFailed<T>('network_error', 'Network error'),
+			result: requestFailed<T>(
+				error instanceof DOMException && error.name === 'AbortError' ? 'timeout' : 'network_error',
+				error instanceof DOMException && error.name === 'AbortError' ? 'Request timed out' : 'Network error'
+			),
 			setCookies: []
 		};
+	} finally {
+		clearTimeout(timeout);
 	}
 }
 
